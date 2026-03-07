@@ -13,7 +13,7 @@ MENU_TREE: list[MenuNode] = [
         key="producciones",
         label="PRODUCCIONES",
         children=[
-            MenuNode(key="producciones.goma", label="GOMA"),
+            MenuNode(key="producciones.goma_seca", label="GOMA SECA"),
             MenuNode(key="producciones.extraccion_eal", label="EXTRACCION Y EAL"),
             MenuNode(key="producciones.destilacion", label="DESTILACION"),
         ],
@@ -58,4 +58,3 @@ MENU_TREE: list[MenuNode] = [
         ],
     ),
 ]
-

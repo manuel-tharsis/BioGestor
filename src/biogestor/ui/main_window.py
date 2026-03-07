@@ -1,12 +1,14 @@
 from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
+    QStackedWidget,
     QSplitter,
     QTreeWidget,
     QTreeWidgetItem,
     QWidget,
 )
 
+from biogestor.modules.producciones.goma_seca_widget import GomaSecaWidget
 from biogestor.modules.module_registry import MENU_TREE, MenuNode
 
 
@@ -21,19 +23,38 @@ class MainWindow(QMainWindow):
     def _build_layout(self) -> QWidget:
         splitter = QSplitter()
 
-        menu = QTreeWidget()
-        menu.setHeaderLabel("Menu")
+        self._menu = QTreeWidget()
+        self._menu.setHeaderLabel("Menu")
         for node in MENU_TREE:
-            menu.addTopLevelItem(self._build_tree_item(node))
-        menu.expandAll()
+            self._menu.addTopLevelItem(self._build_tree_item(node))
+        self._menu.expandAll()
+        self._menu.itemSelectionChanged.connect(self._on_menu_selection_changed)
 
-        placeholder = QLabel("Selecciona un modulo para comenzar.")
-        placeholder.setMargin(12)
+        self._content = QStackedWidget()
+        self._placeholder = QLabel("Selecciona un modulo para comenzar.")
+        self._placeholder.setMargin(12)
+        self._goma_seca_widget = GomaSecaWidget()
 
-        splitter.addWidget(menu)
-        splitter.addWidget(placeholder)
+        self._view_by_key: dict[str, QWidget] = {
+            "producciones.goma_seca": self._goma_seca_widget,
+        }
+        self._content.addWidget(self._placeholder)
+        self._content.addWidget(self._goma_seca_widget)
+
+        splitter.addWidget(self._menu)
+        splitter.addWidget(self._content)
         splitter.setStretchFactor(1, 1)
         return splitter
+
+    def _on_menu_selection_changed(self) -> None:
+        current = self._menu.currentItem()
+        if current is None:
+            self._content.setCurrentWidget(self._placeholder)
+            return
+
+        key = current.data(0, 0x0100)
+        widget = self._view_by_key.get(key, self._placeholder)
+        self._content.setCurrentWidget(widget)
 
     def _build_tree_item(self, node: MenuNode) -> QTreeWidgetItem:
         item = QTreeWidgetItem([node.label])
