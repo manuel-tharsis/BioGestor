@@ -1,0 +1,2 @@
+"""Horas trabajadas module."""
+

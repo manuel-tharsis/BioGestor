@@ -1,0 +1,2 @@
+"""Recepciones module."""
+

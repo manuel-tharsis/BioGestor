@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biogestor"
+version = "0.1.0"
+description = "ERP de produccion y stock para goma/esencias"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PySide6>=6.7",
+  "SQLAlchemy>=2.0",
+  "psycopg[binary]>=3.1",
+  "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "alembic>=1.13",
+]
+
+[project.scripts]
+biogestor = "biogestor.app:run"
+biogestor-create-user = "biogestor.auth.bootstrap_user:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

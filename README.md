@@ -1,24 +1,43 @@
-# BioGestor
+﻿# BioGestor
 
-# ERP Producción (Goma/Esencias) - Red local
+ERP de produccion (goma/esencias) para red local.
 
-Aplicación de gestión interna para empresa de producción de goma y esencias.
-Objetivo: multiusuario en red local con control de accesos y auditoría completa.
+## Stack
+- Python 3.11+
+- PySide6
+- PostgreSQL
+- SQLAlchemy
 
-## Stack propuesto
-- Python 3
-- PySide6 (UI escritorio Windows)
-- PostgreSQL (BD central en servidor)
-- SQLAlchemy + Alembic
-- Autenticación con hash (bcrypt/argon2)
-- Auditoría (audit_log) con contexto de módulo/pantalla/acción
+## Estructura base
+```text
+BioGestor/
+  src/biogestor/
+    app.py
+    main.py
+    config/
+    core/
+    db/
+      models/
+    modules/
+    repositories/
+    services/
+    ui/
+  docs/spec/
+  migrations/
+  tests/
+  pyproject.toml
+  .env.example
+```
 
-## Módulos (MVP)
-- Producciones (Goma / Extracción y EAL / Destilación)
-- Stock (Disolventes / Bidones / Productos / Producción)
-- Recepciones (Internas / Externas)
-- Envíos (Etiquetas)
-- Consultas
-- Horas trabajadas (RG / RA: Tractoristas, Cuadrillas)
+## Arranque rapido
+1. Crear entorno virtual.
+2. Instalar dependencias:
+   `pip install -e .[dev]`
+3. Copiar `.env.example` a `.env` y ajustar `DATABASE_URL`.
+4. Crear usuario inicial (ejemplo admin):
+   `biogestor-create-user --username admin --role admin`
+5. Ejecutar app:
+   `python -m biogestor.main`
 
-Ver especificación en /docs/spec
+## Nota
+Esta version incluye autenticacion inicial (usuarios, hash, login basico, roles y auditoria base), pero no logica de negocio de produccion.
