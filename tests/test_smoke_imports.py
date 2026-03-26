@@ -1,3 +1,2 @@
 def test_import_app() -> None:
-    import biogestor.app  # noqa: F401
-
+    import biogestor.main  # noqa: F401

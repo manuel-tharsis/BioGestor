@@ -20,6 +20,11 @@ class AuthService:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
+    def has_users(self) -> bool:
+        with self._session_factory() as session:
+            repository = UserRepository(session)
+            return repository.count_users() > 0
+
     def authenticate(self, username: str, password: str) -> AuthResult:
         normalized_username = username.strip()
         if not normalized_username:

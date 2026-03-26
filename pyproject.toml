@@ -22,7 +22,7 @@ dev = [
 ]
 
 [project.scripts]
-biogestor = "biogestor.app:run"
+biogestor = "biogestor.main:run"
 biogestor-create-user = "biogestor.auth.bootstrap_user:main"
 
 [tool.setuptools]

@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from biogestor.auth.roles import Role
@@ -20,6 +20,10 @@ class UserRepository:
         stmt = select(User).order_by(User.username.asc())
         return self.session.execute(stmt).scalars().all()
 
+    def count_users(self) -> int:
+        stmt = select(func.count()).select_from(User)
+        return int(self.session.execute(stmt).scalar_one())
+
     def create_user(self, username: str, password: str, role: Role = Role.OPERATOR) -> User:
         user = User(
             username=username,
@@ -29,4 +33,3 @@ class UserRepository:
         )
         self.session.add(user)
         return user
-

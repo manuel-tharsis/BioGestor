@@ -34,10 +34,14 @@ BioGestor/
 2. Instalar dependencias:
    `pip install -e .[dev]`
 3. Copiar `.env.example` a `.env` y ajustar `DATABASE_URL`.
-4. Crear usuario inicial (ejemplo admin):
-   `biogestor-create-user --username admin --role admin`
-5. Ejecutar app:
+   En desarrollo, la app puede arrancar con SQLite local.
+   La base de datos objetivo para despliegue sigue siendo PostgreSQL.
+4. Ejecutar app:
    `python -m biogestor.main`
+   En el primer arranque, si no hay usuarios, la propia interfaz pedira crear el administrador inicial.
+
+## Lanzador Windows
+- Puedes abrir `iniciar_biogestor.bat` para crear `.venv`, instalar dependencias si faltan y lanzar la interfaz.
 
 ## Nota
-Esta version incluye autenticacion inicial (usuarios, hash, login basico, roles y auditoria base), pero no logica de negocio de produccion.
+Esta version incluye autenticacion inicial (usuarios, hash, login basico, roles y auditoria base), una interfaz PySide6 simple con panel principal y la pantalla base de Producciones > Goma seca. La logica de negocio de produccion sigue en fase inicial.

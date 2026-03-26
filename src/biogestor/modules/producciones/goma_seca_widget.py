@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 import re
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
     QDateEdit,
     QDoubleSpinBox,
@@ -14,20 +14,30 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+from sqlalchemy.orm import Session, sessionmaker
+
+from biogestor.services.goma_seca_service import GomaSecaPayload, GomaSecaService
 
 
 class GomaSecaWidget(QWidget):
-    def __init__(self) -> None:
+    production_saved = Signal(str)
+
+    def __init__(self, session_factory: sessionmaker[Session], username: str) -> None:
         super().__init__()
+        self._username = username
+        self._service = GomaSecaService(session_factory)
         self._week_start = self._start_of_week(date.today())
         self._lote_pattern = re.compile(r"^[A-Z]{2}\d{2}-\d{3}-\d+$")
         self._build_ui()
         self._sync_header()
         self._refresh_lote_suggestion()
+        self._load_week_data()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -101,20 +111,52 @@ class GomaSecaWidget(QWidget):
         self._observaciones_input.setMinimumHeight(90)
         form_layout.addRow("Observaciones:", self._observaciones_input)
 
+        self._status_label = QLabel("Completa el formulario y guarda cuando corresponda.")
+        self._status_label.setWordWrap(True)
+        self._status_label.setStyleSheet("color: #486581;")
+        form_layout.addRow("Estado:", self._status_label)
+
         root.addWidget(form_panel)
-        root.addStretch(1)
+
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+        self._save_button = QPushButton("Guardar produccion")
+        self._save_button.clicked.connect(self._save)
+        actions.addWidget(self._save_button)
+        root.addLayout(actions)
+
+        records_panel = QFrame()
+        records_panel.setObjectName("panelCard")
+        records_layout = QVBoxLayout(records_panel)
+        records_title = QLabel("Registros de la semana")
+        records_title.setObjectName("sectionTitle")
+        records_layout.addWidget(records_title)
+
+        self._records_table = QTableWidget(0, 5)
+        self._records_table.setHorizontalHeaderLabels(
+            ["Fecha", "Lote", "Finision", "Kg", "Humedad"]
+        )
+        self._records_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._records_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self._records_table.verticalHeader().setVisible(False)
+        records_layout.addWidget(self._records_table)
+        root.addWidget(records_panel, stretch=1)
 
     def _go_to_previous_week(self) -> None:
         self._week_start -= timedelta(days=7)
         self._sync_header()
         self._fecha_input.setDate(self._to_qdate(self._week_start))
         self._refresh_lote_suggestion()
+        self._load_week_data()
 
     def _go_to_next_week(self) -> None:
         self._week_start += timedelta(days=7)
         self._sync_header()
         self._fecha_input.setDate(self._to_qdate(self._week_start))
         self._refresh_lote_suggestion()
+        self._load_week_data()
 
     def _sync_header(self) -> None:
         week_end = self._week_start + timedelta(days=6)
@@ -130,6 +172,7 @@ class GomaSecaWidget(QWidget):
         self._week_start = self._start_of_week(selected)
         self._sync_header()
         self._refresh_lote_suggestion()
+        self._load_week_data()
 
     def _refresh_lote_suggestion(self, _value: int | None = None) -> None:
         selected_date = self._fecha_input.date().toPython()
@@ -146,11 +189,66 @@ class GomaSecaWidget(QWidget):
         self._lote_input.setText(lote)
         if not lote:
             self._lote_input.setStyleSheet("")
+            self._status_label.setText("Introduce un lote para poder guardar.")
             return
         if self._lote_pattern.match(lote):
             self._lote_input.setStyleSheet("border: 1px solid #4f8a5b;")
+            self._status_label.setText("Lote valido. Puedes guardar la produccion.")
         else:
             self._lote_input.setStyleSheet("border: 1px solid #b64f4f;")
+            self._status_label.setText(
+                "El lote debe seguir el formato sugerido, por ejemplo EG26-064-2."
+            )
+
+    def _save(self) -> None:
+        lote = self._lote_input.text().strip().upper()
+        if not self._lote_pattern.match(lote):
+            self._status_label.setText("Corrige el lote antes de guardar.")
+            self._lote_input.setFocus()
+            return
+
+        payload = GomaSecaPayload(
+            production_date=self._fecha_input.date().toPython(),
+            lot_code=lote,
+            finision_number=self._turno_input.value(),
+            kg_produced=self._kg_input.value(),
+            humidity_percent=self._humedad_input.value(),
+            observations=self._observaciones_input.toPlainText(),
+        )
+        production = self._service.save_production(payload=payload, username=self._username)
+        message = (
+            f"Produccion guardada para lote {production.lot_code}: "
+            f"{production.kg_produced:.2f} kg, humedad {production.humidity_percent:.2f}%."
+        )
+        self._status_label.setText(message)
+        self.production_saved.emit(message)
+        self._clear_form_after_save()
+        self._load_week_data()
+
+    def _load_week_data(self) -> None:
+        records = self._service.list_by_week(self._week_start)
+        self._records_table.setRowCount(len(records))
+        for row, item in enumerate(records):
+            values = [
+                item.production_date.strftime("%d/%m/%Y"),
+                item.lot_code,
+                str(item.finision_number),
+                f"{item.kg_produced:.2f}",
+                f"{item.humidity_percent:.2f} %",
+            ]
+            for column, value in enumerate(values):
+                table_item = QTableWidgetItem(value)
+                if column == 0:
+                    table_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._records_table.setItem(row, column, table_item)
+        self._records_table.resizeColumnsToContents()
+
+    def _clear_form_after_save(self) -> None:
+        self._kg_input.setValue(0.0)
+        self._humedad_input.setValue(8.5)
+        self._observaciones_input.clear()
+        self._lote_input.clear()
+        self._refresh_lote_suggestion()
 
     @staticmethod
     def _start_of_week(value: date) -> date:

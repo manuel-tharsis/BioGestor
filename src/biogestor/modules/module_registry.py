@@ -36,7 +36,20 @@ MENU_TREE: list[MenuNode] = [
         key="stock",
         label="STOCK",
         children=[
-            MenuNode(key="stock.disolventes", label="DISOLVENTES"),
+            MenuNode(
+                key="stock.disolventes",
+                label="DISOLVENTES",
+                children=[
+                    MenuNode(key="stock.disolventes.hexano", label="HEXANO"),
+                    MenuNode(key="stock.disolventes.isopropanol", label="ISOPROPANOL"),
+                    MenuNode(key="stock.disolventes.ciclohexano", label="CICLOHEXANO"),
+                    MenuNode(
+                        key="stock.disolventes.acetato_isopropilico",
+                        label="ACETATO ISOPROPILICO",
+                    ),
+                    MenuNode(key="stock.disolventes.etanol", label="ETANOL"),
+                ],
+            ),
             MenuNode(key="stock.bidones", label="BIDONES"),
             MenuNode(key="stock.productos", label="PRODUCTOS"),
             MenuNode(key="stock.produccion", label="PRODUCCION"),

@@ -30,7 +30,17 @@ class LoginDialog(QDialog):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Introduce tus credenciales"))
+        title = QLabel("Acceso a BioGestor")
+        title.setObjectName("loginTitle")
+        layout.addWidget(title)
+
+        helper = QLabel(
+            "Usa tus credenciales para entrar. Si no existen usuarios, BioGestor "
+            "mostrara antes un asistente de configuracion inicial."
+        )
+        helper.setWordWrap(True)
+        helper.setObjectName("loginHelper")
+        layout.addWidget(helper)
 
         form = QFormLayout()
         self._username_input = QLineEdit()
@@ -54,6 +64,8 @@ class LoginDialog(QDialog):
         actions.addWidget(submit)
         layout.addLayout(actions)
 
+        self._username_input.setFocus()
+
     def _submit(self) -> None:
         result = self._auth_service.authenticate(
             self._username_input.text(),
@@ -66,4 +78,3 @@ class LoginDialog(QDialog):
             return
         self._authenticated_user = result.user
         self.accept()
-
