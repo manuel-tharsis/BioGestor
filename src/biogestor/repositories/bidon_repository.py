@@ -38,9 +38,16 @@ class BidonRepository:
         self.session.add(bidon)
         return bidon
 
-    def list_identifications(self, *, contains: str | None = None) -> list[str]:
+    def list_identifications(
+        self,
+        *,
+        contains: str | None = None,
+        status: str | None = None,
+    ) -> list[str]:
         stmt = select(Bidon.identification)
         if contains:
             stmt = stmt.where(Bidon.identification.ilike(f"%{contains}%"))
+        if status and status != "todos":
+            stmt = stmt.where(Bidon.status == status)
         stmt = stmt.order_by(Bidon.identification.asc())
         return list(self.session.execute(stmt).scalars().all())

@@ -2,9 +2,9 @@ import argparse
 import getpass
 
 from biogestor.auth.roles import Role
-from biogestor.db.base import Base
 from biogestor.db import models  # noqa: F401
-from biogestor.db.session import SessionLocal, engine
+from biogestor.db.init_db import create_all
+from biogestor.db.session import SessionLocal
 from biogestor.services.auth_service import AuthService
 
 
@@ -28,7 +28,7 @@ def main() -> int:
         print("Las passwords no coinciden.")
         return 1
 
-    Base.metadata.create_all(bind=engine)
+    create_all()
     auth = AuthService(SessionLocal)
     user = auth.create_user(args.username, password, role=Role(args.role), created_by="system")
     print(f"Usuario creado: {user.username} ({user.role})")
@@ -37,4 +37,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

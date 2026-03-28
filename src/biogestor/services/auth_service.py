@@ -84,6 +84,52 @@ class AuthService:
             session.commit()
             return AuthResult(success=True, user=user)
 
+    def confirm_password(self, username: str, password: str) -> bool:
+        normalized_username = username.strip()
+        if not normalized_username or not password:
+            return False
+
+        with self._session_factory() as session:
+            repository = UserRepository(session)
+            user = repository.get_by_username(normalized_username)
+            if user is None or not user.is_active:
+                log_action(
+                    session,
+                    username=normalized_username,
+                    module="PRODUCCIONES",
+                    section="GOMA_SECA",
+                    screen="EDIT_CONFIRMATION",
+                    action="AUTH",
+                    entity="User",
+                    entity_id=normalized_username,
+                    description="Confirmacion fallida por usuario inexistente o inactivo.",
+                    before_data=None,
+                    after_data={"success": False},
+                )
+                session.commit()
+                return False
+
+            success = verify_password(password, user.password_hash)
+            log_action(
+                session,
+                username=normalized_username,
+                module="PRODUCCIONES",
+                section="GOMA_SECA",
+                screen="EDIT_CONFIRMATION",
+                action="AUTH",
+                entity="User",
+                entity_id=str(user.id),
+                description=(
+                    "Confirmacion de password para editar produccion."
+                    if success
+                    else "Password incorrecta al intentar editar produccion."
+                ),
+                before_data=None,
+                after_data={"success": success},
+            )
+            session.commit()
+            return success
+
     def create_user(self, username: str, password: str, role: Role, created_by: str = "system") -> User:
         normalized_username = username.strip()
         if not normalized_username:

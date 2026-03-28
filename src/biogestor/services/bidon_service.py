@@ -97,11 +97,53 @@ class BidonService:
                 session.expunge(item)
             return items
 
-    def list_identifications(self, contains: str | None = None) -> list[str]:
+    def list_identifications(
+        self,
+        contains: str | None = None,
+        *,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> list[str]:
         normalized = contains.strip().upper() if contains else None
         with self._session_factory() as session:
             repository = BidonRepository(session)
-            return repository.list_identifications(contains=normalized)
+            items = repository.list_identifications(contains=normalized, status=status)
+
+        ranked = self._rank_identifications(items, normalized)
+        if limit is not None:
+            return ranked[:limit]
+        return ranked
+
+    @staticmethod
+    def _rank_identifications(items: list[str], query: str | None) -> list[str]:
+        if not query:
+            return items
+
+        numeric_query = query.lstrip("0")
+        if not numeric_query:
+            numeric_query = "0"
+
+        def score(identification: str) -> tuple[int, int, str]:
+            upper_identification = identification.upper()
+            digits = "".join(character for character in upper_identification if character.isdigit())
+            normalized_digits = digits.lstrip("0") or "0"
+
+            if upper_identification == query:
+                return (0, 0, upper_identification)
+            if normalized_digits == numeric_query:
+                return (1, len(digits), upper_identification)
+            if upper_identification.startswith(query):
+                return (2, upper_identification.find(query), upper_identification)
+            if digits.startswith(query):
+                return (3, len(digits), upper_identification)
+
+            position = upper_identification.find(query)
+            if position >= 0:
+                return (4, position, upper_identification)
+
+            return (5, 999, upper_identification)
+
+        return sorted(items, key=score)
 
     @staticmethod
     def _serialize(bidon: Bidon | None) -> dict[str, object] | None:

@@ -64,7 +64,7 @@ class MainWindow(QMainWindow):
         top_layout = QHBoxLayout(top_bar)
         top_layout.setContentsMargins(16, 14, 16, 14)
 
-        self._menu_button = QPushButton("MENU")
+        self._menu_button = QPushButton("MENÚ")
         self._menu_button.setObjectName("menuButton")
         self._menu_button.clicked.connect(self._toggle_menu_panel)
         top_layout.addWidget(self._menu_button, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -104,7 +104,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        title = QLabel("Navegacion")
+        title = QLabel("Navegación")
         title.setObjectName("menuTitle")
         layout.addWidget(title)
 
@@ -125,15 +125,6 @@ class MainWindow(QMainWindow):
 
     def _register_initial_pages(self) -> None:
         self._register_entry("inicio", "Inicio", self._build_dashboard())
-        self._register_entry(
-            "consultas",
-            "Consultas",
-            self._wrap_content_page(
-                "Consultas",
-                "Consulta la informacion guardada en la aplicacion.",
-                ConsultasWidget(self._session_factory),
-            ),
-        )
         goma = GomaSecaWidget(self._session_factory, self._username)
         goma.production_saved.connect(self.statusBar().showMessage)
         self._register_entry(
@@ -141,16 +132,25 @@ class MainWindow(QMainWindow):
             "Goma seca",
             self._wrap_content_page(
                 "Goma seca",
-                "Registro semanal de produccion de goma seca.",
+                "Registro diario por finisión y resumen semanal de goma seca.",
                 goma,
             ),
         )
         self._register_entry(
-            "stock.bidones",
-            "Bidones",
+            "consultas.goma_seca_f1620",
+            "Goma seca F1620",
             self._wrap_content_page(
-                "Bidones",
-                "Consulta visual del stock y consumo de bidones.",
+                "Goma seca F1620",
+                "Consulta los registros guardados de goma seca F1620.",
+                ConsultasWidget(self._session_factory),
+            ),
+        )
+        self._register_entry(
+            "stock.bidones",
+            "Bidones de Goma Bruta",
+            self._wrap_content_page(
+                "Bidones de Goma Bruta",
+                "Consulta visual del stock y consumo de bidones de goma bruta.",
                 BidonesWidget(self._session_factory, self._username),
             ),
         )
@@ -229,8 +229,8 @@ class MainWindow(QMainWindow):
         title = QLabel("Panel principal")
         title.setObjectName("heroTitle")
         summary = QLabel(
-            f"Sesion iniciada como {self._username} ({self._role}). "
-            "Selecciona un modulo principal para seguir navegando."
+            f"Sesión iniciada como {self._username} ({self._role}). "
+            "Selecciona un módulo principal para seguir navegando."
         )
         summary.setWordWrap(True)
         summary.setObjectName("heroSummary")
@@ -321,7 +321,7 @@ class MainWindow(QMainWindow):
         body = QFrame()
         body.setObjectName("panelCard")
         body_layout = QVBoxLayout(body)
-        message = QLabel("Esta pantalla aun no esta operativa.")
+        message = QLabel("Esta pantalla aún no está operativa.")
         message.setWordWrap(True)
         message.setStyleSheet("color: #486581;")
         body_layout.addWidget(message)

@@ -35,3 +35,5 @@ def test_auth_service_create_user_and_authenticate() -> None:
     assert result.success
     assert result.user is not None
     assert result.user.username == "admin"
+    assert auth_service.confirm_password("admin", "super-segura")
+    assert not auth_service.confirm_password("admin", "incorrecta")

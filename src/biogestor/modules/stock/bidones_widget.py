@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt, QEvent, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
+    QComboBox,
     QCompleter,
+    QDialog,
+    QFormLayout,
     QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QScrollArea,
@@ -16,9 +20,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from biogestor.db.models.bidon import Bidon
 from biogestor.services.bidon_service import BidonService
+from biogestor.services.goma_seca_service import GomaSecaService
 
 
 class BidonVisual(QWidget):
+    clicked = Signal()
+
     _palette = {
         "stock": QColor("#2f80d1"),
         "f0975": QColor("#cf3e36"),
@@ -30,6 +37,7 @@ class BidonVisual(QWidget):
         self._bidon = bidon
         self.setMinimumSize(180, 220)
         self.setMaximumWidth(220)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(self._build_tooltip())
 
     def _build_tooltip(self) -> str:
@@ -37,7 +45,7 @@ class BidonVisual(QWidget):
             return f"{self._bidon.identification} en stock"
         return (
             f"{self._bidon.identification} consumido en "
-            f"{self._bidon.consumed_in or 'proceso no informado'}"
+            f"{(self._bidon.consumed_in or 'proceso no informado').upper()}"
         )
 
     def _fill_color(self) -> QColor:
@@ -47,10 +55,14 @@ class BidonVisual(QWidget):
             return self._palette["f0975"]
         return self._palette["f1620"]
 
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
     def paintEvent(self, event) -> None:  # type: ignore[override]
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor("#f8fbff"))
 
         body_rect = QRectF(28, 32, self.width() - 56, self.height() - 56)
         top_rect = QRectF(body_rect.left() + 10, 16, body_rect.width() - 20, 28)
@@ -101,15 +113,15 @@ class BidonVisual(QWidget):
             body_rect.width() - 36,
             44,
         )
-        painter.setPen(QPen(QColor("#d6dbe2"), 1))
-        painter.setBrush(QColor("#ffffff"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(16, 42, 67, 180))
         painter.drawRoundedRect(label_rect, 8, 8)
 
         font = QFont(self.font())
         font.setBold(True)
         font.setPointSize(11)
         painter.setFont(font)
-        painter.setPen(QColor("#111111"))
+        painter.setPen(QColor("#f8fbff"))
         painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._bidon.identification)
 
         painter.end()
@@ -121,8 +133,10 @@ class BidonesWidget(QWidget):
         super().__init__()
         self._username = username
         self._service = BidonService(session_factory)
+        self._goma_seca_service = GomaSecaService(session_factory)
         self._completer = QCompleter([])
         self._all_bidones: list[Bidon] = []
+        self._current_columns = 4
         self._build_ui()
         self._refresh_content()
 
@@ -134,26 +148,37 @@ class BidonesWidget(QWidget):
         header = QFrame()
         header.setObjectName("panelCard")
         header_layout = QVBoxLayout(header)
-        title = QLabel("Listado visual de bidones")
+        title = QLabel("Listado visual de bidones de goma bruta")
         title.setObjectName("sectionTitle")
         summary = QLabel(
-            "Escribe una identificacion para localizar un bidon exacto o usa las "
-            "sugerencias para encontrar coincidencias."
+            "Busca por identificación y filtra por color para revisar el estado de los bidones."
         )
         summary.setWordWrap(True)
         summary.setStyleSheet("color: #486581;")
         header_layout.addWidget(title)
         header_layout.addWidget(summary)
 
+        filters_row = QHBoxLayout()
+        filters_row.setSpacing(10)
+
         self._search_input = QLineEdit()
         self._search_input.setObjectName("bidonSearchInput")
-        self._search_input.setPlaceholderText("Buscar bidon por identificacion")
+        self._search_input.setPlaceholderText("Buscar bidón por identificación")
         self._search_input.textChanged.connect(self._on_search_changed)
         self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._completer.setFilterMode(Qt.MatchFlag.MatchContains)
         self._completer.activated.connect(self._apply_completion)
         self._search_input.setCompleter(self._completer)
-        header_layout.addWidget(self._search_input)
+        filters_row.addWidget(self._search_input, stretch=1)
+
+        self._color_filter = QComboBox()
+        self._color_filter.addItem("Todos los colores", "all")
+        self._color_filter.addItem("Azules: en stock", "stock")
+        self._color_filter.addItem("Grises: goma seca F1620", "f1620")
+        self._color_filter.addItem("Rojos: F0975", "f0975")
+        self._color_filter.currentIndexChanged.connect(self._refresh_visuals)
+        filters_row.addWidget(self._color_filter)
+        header_layout.addLayout(filters_row)
 
         self._status_label = QLabel()
         self._status_label.setObjectName("bidonSearchStatus")
@@ -165,27 +190,37 @@ class BidonesWidget(QWidget):
         visual_panel = QFrame()
         visual_panel.setObjectName("panelCard")
         visual_layout = QVBoxLayout(visual_panel)
-        visual_title = QLabel("Bidones")
+        visual_title = QLabel("Bidones de goma bruta")
         visual_title.setObjectName("sectionTitle")
         visual_layout.addWidget(visual_title)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.viewport().installEventFilter(self)
         self._visual_container = QWidget()
         self._visual_grid = QGridLayout(self._visual_container)
         self._visual_grid.setContentsMargins(8, 8, 8, 8)
         self._visual_grid.setHorizontalSpacing(18)
         self._visual_grid.setVerticalSpacing(18)
-        scroll.setWidget(self._visual_container)
-        visual_layout.addWidget(scroll)
+        self._scroll.setWidget(self._visual_container)
+        visual_layout.addWidget(self._scroll)
         root.addWidget(visual_panel, stretch=1)
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        self._refresh_content()
+        super().showEvent(event)
+
+    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
+        if watched is self._scroll.viewport() and event.type() == QEvent.Type.Resize:
+            self._refresh_visuals()
+        return super().eventFilter(watched, event)
 
     def _apply_completion(self, value: str) -> None:
         self._search_input.setText(value)
 
     def _on_search_changed(self, _value: str) -> None:
-        suggestions = self._service.list_identifications(self._search_input.text())
+        suggestions = self._service.list_identifications(self._search_input.text(), limit=12)
         self._completer.model().setStringList(suggestions)  # type: ignore[union-attr]
         self._refresh_visuals()
 
@@ -195,14 +230,29 @@ class BidonesWidget(QWidget):
 
     def _filtered_bidones(self) -> list[Bidon]:
         query = self._search_input.text().strip().upper()
-        if not query:
-            return self._all_bidones
+        color_filter = self._color_filter.currentData()
+        items = self._all_bidones
 
-        exact_matches = [item for item in self._all_bidones if item.identification == query]
+        if color_filter == "stock":
+            items = [item for item in items if item.status == "stock"]
+        elif color_filter == "f1620":
+            items = [item for item in items if (item.consumed_in or "").lower() == "f1620"]
+        elif color_filter == "f0975":
+            items = [item for item in items if (item.consumed_in or "").lower() == "f0975"]
+
+        if not query:
+            return items
+
+        exact_matches = [item for item in items if item.identification == query]
         if exact_matches:
             return exact_matches
 
-        return [item for item in self._all_bidones if query in item.identification]
+        ranked_identifications = self._service.list_identifications(query, limit=100)
+        rank_map = {identification: index for index, identification in enumerate(ranked_identifications)}
+        return sorted(
+            [item for item in items if query in item.identification],
+            key=lambda item: rank_map.get(item.identification, 999),
+        )
 
     def _refresh_visuals(self) -> None:
         items = self._filtered_bidones()
@@ -212,19 +262,60 @@ class BidonesWidget(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-        for index, bidon in enumerate(items):
-            row = index // 4
-            column = index % 4
-            self._visual_grid.addWidget(BidonVisual(bidon), row, column)
+        card_width = 220
+        viewport_width = max(self._scroll.viewport().width() - 32, card_width)
+        columns = max(1, viewport_width // card_width)
+        self._current_columns = columns
 
-        self._visual_grid.setColumnStretch(4, 1)
-        self._visual_grid.setRowStretch((len(items) // 4) + 1, 1)
+        for index, bidon in enumerate(items):
+            row = index // columns
+            column = index % columns
+            visual = BidonVisual(bidon)
+            visual.clicked.connect(lambda _checked=False, item=bidon: self._show_bidon_detail(item))
+            self._visual_grid.addWidget(visual, row, column)
+
+        for column in range(columns):
+            self._visual_grid.setColumnStretch(column, 1)
+        self._visual_grid.setRowStretch((len(items) // columns) + 1, 1)
 
         if not self._all_bidones:
-            self._status_label.setText("Todavia no hay bidones guardados.")
+            self._status_label.setText("Todavía no hay bidones guardados.")
         elif not items:
-            self._status_label.setText("No hay coincidencias para la busqueda actual.")
+            self._status_label.setText("No hay coincidencias para la búsqueda actual.")
         elif len(items) == 1:
-            self._status_label.setText(f"Mostrando 1 bidon: {items[0].identification}.")
+            self._status_label.setText(f"Mostrando 1 bidón: {items[0].identification}.")
         else:
-            self._status_label.setText(f"Mostrando {len(items)} bidones.")
+            self._status_label.setText(f"Mostrando {len(items)} bidones en {columns} columnas.")
+
+    def _show_bidon_detail(self, bidon: Bidon) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Bidón {bidon.identification}")
+        dialog.resize(420, 320)
+        layout = QVBoxLayout(dialog)
+
+        title = QLabel(bidon.identification)
+        title.setObjectName("sectionTitle")
+        layout.addWidget(title)
+
+        form = QFormLayout()
+        form.addRow("Lote al que pertenece:", QLabel("Aún no hay lotes"))
+        form.addRow("Kg:", QLabel("200 kg"))
+
+        production = self._goma_seca_service.get_by_raw_drum_identification(bidon.identification)
+        production_name = "En stock"
+        consumed_lot = "-"
+        consumed_date = "-"
+        if bidon.status != "stock":
+            production_name = {
+                "f1620": "Goma seca F1620",
+                "f0975": "F0975",
+            }.get((bidon.consumed_in or "").lower(), "Proceso no informado")
+        if production is not None:
+            consumed_lot = production.lot_code
+            consumed_date = production.production_date.strftime("%d/%m/%Y")
+
+        form.addRow("Producción consumida:", QLabel(production_name))
+        form.addRow("Lote consumido:", QLabel(consumed_lot))
+        form.addRow("Fecha de consumo:", QLabel(consumed_date))
+        layout.addLayout(form)
+        dialog.exec()

@@ -18,7 +18,11 @@ MENU_TREE: list[MenuNode] = [
             MenuNode(key="producciones.destilacion", label="DESTILACION"),
         ],
     ),
-    MenuNode(key="consultas", label="CONSULTAS"),
+    MenuNode(
+        key="consultas",
+        label="CONSULTAS",
+        children=[MenuNode(key="consultas.goma_seca_f1620", label="GOMA SECA F1620")],
+    ),
     MenuNode(
         key="envios",
         label="ENVIOS",
@@ -50,7 +54,7 @@ MENU_TREE: list[MenuNode] = [
                     MenuNode(key="stock.disolventes.etanol", label="ETANOL"),
                 ],
             ),
-            MenuNode(key="stock.bidones", label="BIDONES"),
+            MenuNode(key="stock.bidones", label="BIDONES DE GOMA BRUTA"),
             MenuNode(key="stock.productos", label="PRODUCTOS"),
             MenuNode(key="stock.produccion", label="PRODUCCION"),
         ],

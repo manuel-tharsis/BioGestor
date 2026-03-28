@@ -5,9 +5,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from biogestor.config.settings import get_settings
 from biogestor.core.logging_config import configure_logging
-from biogestor.db.base import Base
 from biogestor.db import models  # noqa: F401
-from biogestor.db.session import SessionLocal, engine
+from biogestor.db.init_db import create_all
+from biogestor.db.session import SessionLocal
 from biogestor.services.auth_service import AuthService
 from biogestor.ui.initial_setup_dialog import InitialSetupDialog
 from biogestor.ui.login_dialog import LoginDialog
@@ -24,7 +24,7 @@ def run() -> int:
     logging.getLogger(__name__).info("Iniciando %s", settings.app_name)
 
     try:
-        Base.metadata.create_all(bind=engine)
+        create_all()
     except SQLAlchemyError as exc:
         QMessageBox.critical(
             None,
