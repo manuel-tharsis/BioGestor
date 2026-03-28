@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.orm import Session, sessionmaker
 
 from biogestor.modules.consultas import ConsultasWidget
+from biogestor.modules.envios import PendingShipmentsWidget
 from biogestor.modules.module_registry import MENU_TREE, MenuNode
 from biogestor.modules.producciones.goma_seca_widget import GomaSecaWidget
 from biogestor.modules.stock import BidonesWidget, HexanoWidget, IsopropanolWidget
@@ -99,14 +100,18 @@ class MainWindow(QMainWindow):
     def _build_menu_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("menuPanel")
-        panel.setFixedWidth(300)
+        panel.setFixedWidth(340)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
         title = QLabel("Navegación")
         title.setObjectName("menuTitle")
         layout.addWidget(title)
+
+        hint = QLabel("Módulos y apartados disponibles")
+        hint.setObjectName("menuHint")
+        layout.addWidget(hint)
 
         home_button = QPushButton("INICIO")
         home_button.setObjectName("homeButton")
@@ -114,7 +119,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(home_button)
 
         self._menu = QTreeWidget()
+        self._menu.setObjectName("navigationTree")
         self._menu.setHeaderHidden(True)
+        self._menu.setIndentation(18)
+        self._menu.setAnimated(True)
+        self._menu.setUniformRowHeights(True)
+        self._menu.setExpandsOnDoubleClick(False)
         for node in MENU_TREE:
             self._menu.addTopLevelItem(self._build_tree_item(node))
         self._menu.expandAll()
@@ -143,6 +153,15 @@ class MainWindow(QMainWindow):
                 "Goma seca F1620",
                 "Consulta los registros guardados de goma seca F1620.",
                 ConsultasWidget(self._session_factory),
+            ),
+        )
+        self._register_entry(
+            "envios",
+            "Envíos pendientes",
+            self._wrap_content_page(
+                "Envíos pendientes",
+                "Consulta qué productos terminados siguen pendientes de salida.",
+                PendingShipmentsWidget(self._session_factory),
             ),
         )
         self._register_entry(
@@ -396,16 +415,27 @@ class MainWindow(QMainWindow):
                 font-weight: 700;
                 padding: 4px 6px;
             }
+            QLabel#menuHint {
+                color: #b7c9d8;
+                font-size: 12px;
+                font-weight: 600;
+                padding: 0 6px 4px 6px;
+            }
             QTreeWidget {
-                background: transparent;
+                background: rgba(12, 30, 46, 0.32);
                 color: #f4f7fb;
-                border: none;
-                padding: 4px;
+                border: 1px solid #33506b;
+                border-radius: 16px;
+                padding: 10px;
                 font-weight: 600;
             }
             QTreeWidget::item {
-                padding: 8px 6px;
-                border-radius: 6px;
+                padding: 10px 8px;
+                border-radius: 10px;
+                margin: 2px 0;
+            }
+            QTreeWidget::item:hover {
+                background: rgba(76, 132, 181, 0.28);
             }
             QTreeWidget::item:selected {
                 background: #2b5d87;

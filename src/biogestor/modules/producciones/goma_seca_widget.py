@@ -55,6 +55,10 @@ class NoWheelTimeEdit(QTimeEdit):
 class GomaSecaWidget(QWidget):
     production_saved = Signal(str)
     DEFAULT_BIDON_KG = 200.0
+    MAX_RAW_BIDON_KG = 250.0
+    PRODUCED_KG_STEP = 25.0
+    NAVIGATION_COLOR = "#17324d"
+    INPUT_ERROR_STYLE = "color: #b42318; border: 1px solid #b42318;"
 
     _DAY_NAMES = {
         0: "Lunes",
@@ -101,12 +105,21 @@ class GomaSecaWidget(QWidget):
 
         week_header = QHBoxLayout()
         self._prev_week_button = QPushButton("<")
+        self._prev_week_button.setObjectName("gomaSecaNavButton")
+        self._prev_week_button.setStyleSheet(
+            "background: #17324d; color: #f4f7fb; border-radius: 12px; padding: 8px 14px; font-weight: 700;"
+        )
         self._prev_week_button.clicked.connect(self._go_to_previous_week)
         self._next_week_button = QPushButton(">")
+        self._next_week_button.setObjectName("gomaSecaNavButton")
+        self._next_week_button.setStyleSheet(
+            "background: #17324d; color: #f4f7fb; border-radius: 12px; padding: 8px 14px; font-weight: 700;"
+        )
         self._next_week_button.clicked.connect(self._go_to_next_week)
         self._week_label = QLabel()
+        self._week_label.setObjectName("gomaSecaWeekLabel")
         self._week_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._week_label.setStyleSheet("font-weight: 700; font-size: 15px;")
+        self._week_label.setStyleSheet("font-weight: 700; font-size: 15px; color: #17324d;")
         week_header.addWidget(self._prev_week_button)
         week_header.addWidget(self._week_label, stretch=1)
         week_header.addWidget(self._next_week_button)
@@ -114,12 +127,21 @@ class GomaSecaWidget(QWidget):
 
         day_header = QHBoxLayout()
         self._prev_day_button = QPushButton("<")
+        self._prev_day_button.setObjectName("gomaSecaNavButton")
+        self._prev_day_button.setStyleSheet(
+            "background: #17324d; color: #f4f7fb; border-radius: 12px; padding: 8px 14px; font-weight: 700;"
+        )
         self._prev_day_button.clicked.connect(self._go_to_previous_day)
         self._next_day_button = QPushButton(">")
+        self._next_day_button.setObjectName("gomaSecaNavButton")
+        self._next_day_button.setStyleSheet(
+            "background: #17324d; color: #f4f7fb; border-radius: 12px; padding: 8px 14px; font-weight: 700;"
+        )
         self._next_day_button.clicked.connect(self._go_to_next_day)
         self._day_label = QLabel()
+        self._day_label.setObjectName("gomaSecaDayLabel")
         self._day_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._day_label.setStyleSheet("font-weight: 700; font-size: 15px;")
+        self._day_label.setStyleSheet("font-weight: 700; font-size: 15px; color: #17324d;")
         day_header.addWidget(self._prev_day_button)
         day_header.addWidget(self._day_label, stretch=1)
         day_header.addWidget(self._next_day_button)
@@ -276,11 +298,11 @@ class GomaSecaWidget(QWidget):
         saved_kg.setStyleSheet(
             "background: #f8fbff; border: 1px solid #d9e2ec; border-radius: 10px; padding: 8px 10px;"
         )
-        layout.addRow("KG goma bruta:", saved_kg)
+        layout.addRow("Kg goma bruta:", saved_kg)
         return group
 
     def _build_saved_production_group(self) -> QGroupBox:
-        group = QGroupBox("PRODUCCION")
+        group = QGroupBox("PRODUCCIÓN")
         layout = QFormLayout(group)
         layout.setHorizontalSpacing(16)
         layout.setVerticalSpacing(10)
@@ -310,7 +332,7 @@ class GomaSecaWidget(QWidget):
         saved_kg.setStyleSheet(
             "background: #f8fbff; border: 1px solid #d9e2ec; border-radius: 10px; padding: 8px 10px;"
         )
-        layout.addRow("KG producidos:", saved_kg)
+        layout.addRow("Kg producidos:", saved_kg)
         return group
 
     def _build_saved_group(self, title: str, rows: list[tuple[str, str]]) -> QGroupBox:
@@ -359,11 +381,14 @@ class GomaSecaWidget(QWidget):
         layout.addRow("Finisión:", finision_row)
 
         self._kg_input = NoWheelDoubleSpinBox()
-        self._kg_input.setMaximum(100000)
-        self._kg_input.setDecimals(2)
+        self._kg_input.setObjectName("gomaSecaProducedKgInput")
+        self._kg_input.setRange(0.0, self.DEFAULT_BIDON_KG)
+        self._kg_input.setDecimals(0)
+        self._kg_input.setSingleStep(self.PRODUCED_KG_STEP)
         self._kg_input.setSuffix(" kg")
         self._kg_input.valueChanged.connect(self._validate_form)
-        layout.addRow("KG producidos:", self._kg_input)
+        self._kg_input.valueChanged.connect(self._update_produced_kg_style)
+        layout.addRow("Kg producidos:", self._kg_input)
         return group
 
     def _build_consumption_group(self) -> QGroupBox:
@@ -385,12 +410,13 @@ class GomaSecaWidget(QWidget):
 
         self._raw_kg_input = NoWheelDoubleSpinBox()
         self._raw_kg_input.setObjectName("gomaSecaRawKgInput")
-        self._raw_kg_input.setMaximum(100000)
+        self._raw_kg_input.setRange(0.0, self.MAX_RAW_BIDON_KG)
         self._raw_kg_input.setDecimals(2)
+        self._raw_kg_input.setSingleStep(1.0)
         self._raw_kg_input.setSuffix(" kg")
         self._raw_kg_input.valueChanged.connect(self._validate_form)
         self._raw_kg_input.valueChanged.connect(self._update_raw_kg_style)
-        layout.addRow("KG Goma Bruta:", self._raw_kg_input)
+        layout.addRow("Kg goma bruta:", self._raw_kg_input)
         return group
 
     def _build_parameters_group(self) -> QGroupBox:
@@ -577,7 +603,9 @@ class GomaSecaWidget(QWidget):
         self._distillation_input.setValue(0)
         self._observaciones_input.clear()
         self._refresh_lote_suggestion(force=True)
+        self._sync_produced_kg_constraints()
         self._update_raw_kg_style()
+        self._update_produced_kg_style()
 
     def _populate_form_from_record(self, record: GomaSecaProduction) -> None:
         self._lote_input.setText(record.lot_code)
@@ -594,7 +622,9 @@ class GomaSecaWidget(QWidget):
         self._distillation_input.setValue(record.distillation_minutes)
         self._observaciones_input.setPlainText(record.observations)
         self._refresh_lote_suggestion(force=False)
+        self._sync_produced_kg_constraints()
         self._update_raw_kg_style()
+        self._update_produced_kg_style()
 
     def _populate_saved_view(self, record: GomaSecaProduction) -> None:
         self.findChild(QLabel, "savedLotValue").setText(record.lot_code)
@@ -701,13 +731,23 @@ class GomaSecaWidget(QWidget):
             self._save_button.setEnabled(False)
             return
 
+        if self._raw_kg_input.value() <= 0:
+            self._set_validation_message("Indica los kg consumidos de goma bruta.", error=True)
+            self._save_button.setEnabled(False)
+            return
         if self._kg_input.value() <= 0:
             self._set_validation_message("Indica los kg producidos.", error=True)
             self._save_button.setEnabled(False)
             return
-
-        if self._raw_kg_input.value() <= 0:
-            self._set_validation_message("Indica los kg consumidos de goma bruta.", error=True)
+        if self._kg_input.value() > self._raw_kg_input.value():
+            self._set_validation_message(
+                "Los kg producidos no pueden superar los kg consumidos de goma bruta.",
+                error=True,
+            )
+            self._save_button.setEnabled(False)
+            return
+        if not self._is_multiple_of_25(self._kg_input.value()):
+            self._set_validation_message("Los kg producidos deben ser múltiplos de 25 kg.", error=True)
             self._save_button.setEnabled(False)
             return
 
@@ -727,11 +767,38 @@ class GomaSecaWidget(QWidget):
         self._validation_label.setVisible(True)
 
     def _update_raw_kg_style(self, _value: float | None = None) -> None:
+        self._sync_produced_kg_constraints()
+        self._update_produced_kg_style()
         value = self._raw_kg_input.value()
-        if 0 < value <= 250 and abs(value - self.DEFAULT_BIDON_KG) > 0.001:
-            self._raw_kg_input.setStyleSheet("color: #b42318; border: 1px solid #b42318;")
+        if 0 < value <= self.MAX_RAW_BIDON_KG and abs(value - self.DEFAULT_BIDON_KG) > 0.001:
+            self._raw_kg_input.setStyleSheet(self.INPUT_ERROR_STYLE)
             return
         self._raw_kg_input.setStyleSheet("")
+
+    def _update_produced_kg_style(self, _value: float | None = None) -> None:
+        value = self._kg_input.value()
+        raw_kg = self._raw_kg_input.value()
+        if 0 < value <= raw_kg and not self._is_multiple_of_25(value):
+            self._kg_input.setStyleSheet(self.INPUT_ERROR_STYLE)
+            return
+        self._kg_input.setStyleSheet("")
+
+    def _sync_produced_kg_constraints(self) -> None:
+        maximum = max(0.0, self._raw_kg_input.value())
+        self._kg_input.setMaximum(maximum)
+        if self._kg_input.value() > maximum:
+            self._kg_input.setValue(self._highest_valid_produced_kg(maximum))
+
+    def _highest_valid_produced_kg(self, maximum: float) -> float:
+        if maximum < self.PRODUCED_KG_STEP:
+            return 0.0
+        return float(int(maximum // self.PRODUCED_KG_STEP) * int(self.PRODUCED_KG_STEP))
+
+    def _is_multiple_of_25(self, value: float) -> bool:
+        if value <= 0:
+            return False
+        remainder = value % self.PRODUCED_KG_STEP
+        return remainder < 1e-6 or abs(remainder - self.PRODUCED_KG_STEP) < 1e-6
 
     def _is_valid_raw_drum(self, value: str) -> bool:
         normalized = value.strip().upper()

@@ -33,6 +33,9 @@ class GomaSecaPayload:
 
 class GomaSecaService:
     MAX_FINISION = 4
+    MAX_RAW_BIDON_KG = 250.0
+    STANDARD_RAW_BIDON_KG = 200.0
+    PRODUCED_KG_STEP = 25.0
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -50,19 +53,25 @@ class GomaSecaService:
         if not normalized_lot:
             raise ValueError("El lote es obligatorio.")
         if not normalized_bidon:
-            raise ValueError("El numero de bidon de goma bruta es obligatorio.")
+            raise ValueError("El número de bidón de goma bruta es obligatorio.")
         if not normalized_time:
-            raise ValueError("La hora de inicio del dia es obligatoria.")
+            raise ValueError("La hora de inicio del día es obligatoria.")
         if payload.finision_number < 1 or payload.finision_number > self.MAX_FINISION:
-            raise ValueError("La finision debe estar entre 1 y 4.")
+            raise ValueError("La finisión debe estar entre 1 y 4.")
         if payload.kg_produced <= 0:
             raise ValueError("Los kg producidos deben ser mayores que cero.")
         if payload.raw_kg_used <= 0:
             raise ValueError("Los kg de goma bruta deben ser mayores que cero.")
+        if payload.raw_kg_used > self.MAX_RAW_BIDON_KG:
+            raise ValueError("Los kg de goma bruta no pueden superar los 250 kg.")
+        if payload.kg_produced > payload.raw_kg_used:
+            raise ValueError("Los kg producidos no pueden superar los kg consumidos de goma bruta.")
+        if not self._is_multiple_of_step(payload.kg_produced, self.PRODUCED_KG_STEP):
+            raise ValueError("Los kg producidos deben ser múltiplos de 25 kg.")
         if payload.filter_cleanings < 0:
-            raise ValueError("El numero de limpiezas no puede ser negativo.")
+            raise ValueError("El número de limpiezas no puede ser negativo.")
         if payload.distillation_minutes < 0:
-            raise ValueError("El tiempo de destilacion no puede ser negativo.")
+            raise ValueError("El tiempo de destilación no puede ser negativo.")
 
         week_start = payload.production_date - timedelta(days=payload.production_date.weekday())
 
@@ -77,14 +86,14 @@ class GomaSecaService:
 
             duplicated_lot = repository.get_by_lot_code(normalized_lot)
             if duplicated_lot is not None and duplicated_lot.id != record_id:
-                raise ValueError("El numero de lote no se puede repetir.")
+                raise ValueError("El número de lote no se puede repetir.")
 
             existing_in_slot = repository.get_by_day_and_finision(
                 payload.production_date,
                 payload.finision_number,
             )
             if record_id is None and existing_in_slot is not None:
-                raise ValueError("Ya hay datos guardados para ese dia y finision.")
+                raise ValueError("Ya hay datos guardados para ese día y finisión.")
 
             if record_id is not None:
                 production = repository.get_by_id(record_id)
@@ -94,10 +103,10 @@ class GomaSecaService:
                     production.production_date != payload.production_date
                     or production.finision_number != payload.finision_number
                 ):
-                    raise ValueError("La edicion debe mantenerse en el mismo dia y finision.")
+                    raise ValueError("La edición debe mantenerse en el mismo día y finisión.")
                 before_data = self._serialize(production)
                 action = "UPDATE"
-                description = f"Actualizacion de produccion de goma seca para lote {normalized_lot}."
+                description = f"Actualización de producción de goma seca para lote {normalized_lot}."
                 previous_bidon_identification = production.raw_drum_identification
             else:
                 production = GomaSecaProduction(
@@ -121,7 +130,7 @@ class GomaSecaService:
                 repository.save(production)
                 before_data = None
                 action = "CREATE"
-                description = f"Alta de produccion de goma seca para lote {normalized_lot}."
+                description = f"Alta de producción de goma seca para lote {normalized_lot}."
                 previous_bidon_identification = None
 
             self._ensure_bidon_available(
@@ -190,7 +199,7 @@ class GomaSecaService:
                     action="DELETE_ALL",
                     entity="GomaSecaProduction",
                     entity_id="all",
-                    description="Eliminacion completa de datos de produccion de goma seca.",
+                    description="Eliminación completa de datos de producción de goma seca.",
                     before_data={"count": deleted_count},
                     after_data={"count": 0},
                 )
@@ -278,24 +287,24 @@ class GomaSecaService:
         if not normalized_lot:
             return False, "Introduce un lote para poder guardar."
         if payload_finision_invalid(finision_number, self.MAX_FINISION):
-            return False, "La finision debe estar entre 1 y 4."
+            return False, "La finisión debe estar entre 1 y 4."
 
         with self._session_factory() as session:
             repository = GomaSecaRepository(session)
             if repository.get_by_lot_code(normalized_lot) is not None:
                 duplicated = repository.get_by_lot_code(normalized_lot)
                 if duplicated is not None and duplicated.id != record_id:
-                    return False, "El numero de lote no se puede repetir."
+                    return False, "El número de lote no se puede repetir."
 
             for previous_finision in range(1, finision_number):
                 previous = repository.get_by_day_and_finision(production_date, previous_finision)
                 if previous is None:
                     return (
                         False,
-                        f"No puede haber una finision {finision_number} sin la {previous_finision}.",
+                        f"No puede haber una finisión {finision_number} sin la {previous_finision}.",
                     )
 
-        return True, "Lote valido. Puedes guardar la produccion."
+        return True, "Lote válido. Puedes guardar la producción."
 
     def _validate_finision_sequence(
         self,
@@ -307,7 +316,7 @@ class GomaSecaService:
             previous = repository.get_by_day_and_finision(production_date, previous_finision)
             if previous is None:
                 raise ValueError(
-                    f"No puede haber una finision {finision_number} sin la {previous_finision}."
+                    f"No puede haber una finisión {finision_number} sin la {previous_finision}."
                 )
 
     @staticmethod
@@ -319,12 +328,12 @@ class GomaSecaService:
     ) -> None:
         bidon = repository.get_by_identification(bidon_identification)
         if bidon is None:
-            raise ValueError("El bidon indicado no existe.")
+            raise ValueError("El bidón indicado no existe.")
         if bidon.status == "stock":
             return
         if current_bidon_identification and bidon.identification == current_bidon_identification:
             return
-        raise ValueError("El bidon seleccionado ya ha sido consumido y no puede reutilizarse.")
+        raise ValueError("El bidón seleccionado ya ha sido consumido y no puede reutilizarse.")
 
     @staticmethod
     def _consume_bidon(repository: BidonRepository, bidon_identification: str) -> None:
@@ -366,6 +375,11 @@ class GomaSecaService:
             "observations": production.observations,
             "created_by": production.created_by,
         }
+
+    @staticmethod
+    def _is_multiple_of_step(value: float, step: float) -> bool:
+        remainder = value % step
+        return remainder < 1e-6 or abs(remainder - step) < 1e-6
 
 
 def payload_finision_invalid(finision_number: int, max_finision: int) -> bool:

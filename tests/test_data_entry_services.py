@@ -34,9 +34,9 @@ def test_goma_seca_service_saves_and_queries_week_records() -> None:
             production_date=date(2026, 3, 24),
             lot_code="eg26-083-1",
             finision_number=1,
-            kg_produced=1200.5,
+            kg_produced=200.0,
             raw_drum_identification="p001",
-            raw_kg_used=1420.0,
+            raw_kg_used=200.0,
             filter_cleanings=2,
             humidity_percent=8.2,
             day_start_time="07:15",
@@ -55,8 +55,8 @@ def test_goma_seca_service_saves_and_queries_week_records() -> None:
     week_items = service.list_by_week(date(2026, 3, 23))
 
     assert len(week_items) == 1
-    assert week_items[0].kg_produced == 1200.5
-    assert week_items[0].raw_kg_used == 1420.0
+    assert week_items[0].kg_produced == 200.0
+    assert week_items[0].raw_kg_used == 200.0
 
     search_items = service.search(lot_contains="083")
 
@@ -84,9 +84,9 @@ def test_goma_seca_service_requires_previous_finision() -> None:
                 production_date=date(2026, 3, 24),
                 lot_code="EG26-084-2",
                 finision_number=2,
-                kg_produced=900,
+                kg_produced=100,
                 raw_drum_identification="P002",
-                raw_kg_used=1000,
+                raw_kg_used=200,
                 filter_cleanings=1,
                 humidity_percent=7.9,
                 day_start_time="08:00",
@@ -118,9 +118,9 @@ def test_goma_seca_service_clears_all_data_and_releases_bidones() -> None:
             production_date=date(2026, 3, 24),
             lot_code="EG26-083-1",
             finision_number=1,
-            kg_produced=1200.5,
+            kg_produced=200.0,
             raw_drum_identification="P003",
-            raw_kg_used=1420.0,
+            raw_kg_used=200.0,
             filter_cleanings=2,
             humidity_percent=8.2,
             day_start_time="07:15",
@@ -140,6 +140,66 @@ def test_goma_seca_service_clears_all_data_and_releases_bidones() -> None:
     assert service.list_by_week(date(2026, 3, 23)) == []
     assert len(released) == 1
     assert released[0].consumed_in is None
+
+
+def test_goma_seca_service_rejects_kg_out_of_range_or_non_multiple() -> None:
+    session_factory = _session_factory()
+    service = GomaSecaService(session_factory)
+    bidon_service = BidonService(session_factory)
+    bidon_service.save_bidon(
+        payload=BidonPayload("P004", "stock", None, ""),
+        username="juana",
+    )
+
+    try:
+        service.save_production(
+            payload=GomaSecaPayload(
+                production_date=date(2026, 3, 24),
+                lot_code="EG26-083-1",
+                finision_number=1,
+                kg_produced=180.0,
+                raw_drum_identification="P004",
+                raw_kg_used=200.0,
+                filter_cleanings=2,
+                humidity_percent=8.2,
+                day_start_time="07:15",
+                top_temperature=82.5,
+                gum_temperature=76.1,
+                vacuum=-0.85,
+                distillation_minutes=95,
+                observations="turno de mañana",
+            ),
+            username="juana",
+        )
+    except ValueError as exc:
+        assert "múltiplos de 25" in str(exc)
+    else:
+        raise AssertionError("Se esperaba un error por kg producidos no múltiplos de 25.")
+
+    try:
+        service.save_production(
+            payload=GomaSecaPayload(
+                production_date=date(2026, 3, 24),
+                lot_code="EG26-083-2",
+                finision_number=1,
+                kg_produced=225.0,
+                raw_drum_identification="P004",
+                raw_kg_used=260.0,
+                filter_cleanings=2,
+                humidity_percent=8.2,
+                day_start_time="07:15",
+                top_temperature=82.5,
+                gum_temperature=76.1,
+                vacuum=-0.85,
+                distillation_minutes=95,
+                observations="turno de mañana",
+            ),
+            username="juana",
+        )
+    except ValueError as exc:
+        assert "250 kg" in str(exc)
+    else:
+        raise AssertionError("Se esperaba un error por kg de goma bruta fuera de rango.")
 
 
 def test_bidon_service_saves_and_filters_bidones() -> None:

@@ -41,7 +41,7 @@ def test_main_window_home_and_navigation_history() -> None:
     window._open_view("producciones")
     section_buttons = window._entries_by_key["producciones"].widget.findChildren(QPushButton, "sectionMenuCard")
     texts = [button.text() for button in section_buttons]
-    assert texts == ["GOMA SECA F1620", "EXTRACCION Y EAL", "DESTILACION"]
+    assert texts == ["GOMA SECA F1620", "EXTRACCIÓN Y EAL", "DESTILACIÓN"]
 
     window._open_view("consultas")
     consultas_buttons = window._entries_by_key["consultas"].widget.findChildren(QPushButton, "sectionMenuCard")
@@ -52,6 +52,7 @@ def test_main_window_home_and_navigation_history() -> None:
     assert back_button is not None
     assert back_button.text() == "Volver a Consultas"
 
+    assert window._entries_by_key["envios"].label == "Envíos pendientes"
     assert window._entries_by_key["stock.bidones"].label == "Bidones de Goma Bruta"
 
     window._go_back()
@@ -121,9 +122,9 @@ def test_goma_seca_page_switches_between_entry_and_saved_card() -> None:
             production_date=date.today(),
             lot_code="EG26-088-1",
             finision_number=1,
-            kg_produced=1200,
+            kg_produced=125,
             raw_drum_identification="P001",
-            raw_kg_used=1400,
+            raw_kg_used=200,
             filter_cleanings=2,
             humidity_percent=8.1,
             day_start_time="07:00",
@@ -183,17 +184,73 @@ def test_goma_seca_bidon_sets_default_kg_and_marks_non_standard_value() -> None:
     goma_page = window._entries_by_key["producciones.goma_seca"].widget
     raw_bidon_input = goma_page.findChild(QLineEdit, "gomaSecaRawBidonInput")
     raw_kg_input = goma_page.findChild(QDoubleSpinBox, "gomaSecaRawKgInput")
+    produced_kg_input = goma_page.findChild(QDoubleSpinBox, "gomaSecaProducedKgInput")
+    week_label = goma_page.findChild(QLabel, "gomaSecaWeekLabel")
+    nav_buttons = goma_page.findChildren(QPushButton, "gomaSecaNavButton")
 
     assert raw_bidon_input is not None
     assert raw_kg_input is not None
+    assert produced_kg_input is not None
+    assert week_label is not None
+    assert nav_buttons
+    assert "#17324d" in week_label.styleSheet()
+    assert all("#17324d" in button.styleSheet() for button in nav_buttons)
 
     raw_bidon_input.setText("P001")
     app.processEvents()
     assert raw_kg_input.value() == 200.0
+    assert produced_kg_input.maximum() == 200.0
 
     raw_kg_input.setValue(150.0)
     app.processEvents()
     assert "#b42318" in raw_kg_input.styleSheet()
+    assert produced_kg_input.maximum() == 150.0
+
+    produced_kg_input.setValue(130.0)
+    app.processEvents()
+    assert "#b42318" in produced_kg_input.styleSheet()
+
+    produced_kg_input.setValue(125.0)
+    app.processEvents()
+    assert produced_kg_input.styleSheet() == ""
+
+
+def test_envios_page_lists_pending_goma_seca_production() -> None:
+    _app()
+    session_factory = _session_factory()
+    bidon_service = BidonService(session_factory)
+    goma_service = GomaSecaService(session_factory)
+    bidon_service.save_bidon(
+        payload=BidonPayload("P010", "stock", None, ""),
+        username="juana",
+    )
+    goma_service.save_production(
+        payload=GomaSecaPayload(
+            production_date=date(2026, 3, 24),
+            lot_code="EG26-083-1",
+            finision_number=1,
+            kg_produced=200.0,
+            raw_drum_identification="P010",
+            raw_kg_used=200.0,
+            filter_cleanings=2,
+            humidity_percent=8.2,
+            day_start_time="07:15",
+            top_temperature=82.5,
+            gum_temperature=76.1,
+            vacuum=-0.85,
+            distillation_minutes=95,
+            observations="turno de mañana",
+        ),
+        username="juana",
+    )
+
+    window = MainWindow("juana", "admin", session_factory)
+    window._open_view("envios")
+    envios_page = window._entries_by_key["envios"].widget
+    labels = [label.text() for label in envios_page.findChildren(QLabel)]
+
+    assert any("GOMA SECA F1620" in text for text in labels)
+    assert any("Lotes pendientes" in text for text in labels)
 
 
 def test_consultas_has_lot_selector_button() -> None:
