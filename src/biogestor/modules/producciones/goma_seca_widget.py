@@ -54,6 +54,7 @@ class NoWheelTimeEdit(QTimeEdit):
 
 class GomaSecaWidget(QWidget):
     production_saved = Signal(str)
+    DEFAULT_BIDON_KG = 200.0
 
     _DAY_NAMES = {
         0: "Lunes",
@@ -226,21 +227,57 @@ class GomaSecaWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
         layout.addWidget(self._build_saved_production_group())
-        layout.addWidget(self._build_saved_group("CONSUMO", [
-            ("N.º bidón de goma bruta", "savedBidonValue"),
-            ("KG Goma Bruta", "savedKgRawValue"),
-        ]))
-        layout.addWidget(self._build_saved_group("PARÁMETROS DE LA FINISIÓN", [
-            ("N.º limpiezas del filtro", "savedFilterCleaningsValue"),
-            ("Humedad", "savedHumidityValue"),
-            ("Hora inicio día", "savedDayStartValue"),
-            ("Temperatura parte alta", "savedTopTempValue"),
-            ("Temperatura goma", "savedGumTempValue"),
-            ("Vacío", "savedVacuumValue"),
-            ("Tiempo destilación", "savedDistillationValue"),
-            ("Observaciones", "savedObservationsValue"),
-        ]))
+        layout.addWidget(self._build_saved_consumption_group())
+        layout.addWidget(
+            self._build_saved_group(
+                "PARÁMETROS DE LA FINISIÓN",
+                [
+                    ("N.º limpiezas del filtro", "savedFilterCleaningsValue"),
+                    ("Humedad", "savedHumidityValue"),
+                    ("Hora inicio día", "savedDayStartValue"),
+                    ("Temperatura parte alta", "savedTopTempValue"),
+                    ("Temperatura goma", "savedGumTempValue"),
+                    ("Vacío", "savedVacuumValue"),
+                    ("Tiempo destilación", "savedDistillationValue"),
+                    ("Observaciones", "savedObservationsValue"),
+                ],
+            )
+        )
         return container
+
+    def _build_saved_consumption_group(self) -> QGroupBox:
+        group = QGroupBox("CONSUMO")
+        layout = QFormLayout(group)
+        layout.setHorizontalSpacing(16)
+        layout.setVerticalSpacing(10)
+
+        bidon_container = QWidget()
+        bidon_layout = QVBoxLayout(bidon_container)
+        bidon_layout.setContentsMargins(0, 0, 0, 0)
+        bidon_layout.setSpacing(4)
+
+        saved_bidon = QLabel("-")
+        saved_bidon.setObjectName("savedBidonValue")
+        saved_bidon.setWordWrap(True)
+        saved_bidon.setStyleSheet(
+            "background: #f8fbff; border: 1px solid #d9e2ec; border-radius: 10px; padding: 8px 10px;"
+        )
+        bidon_layout.addWidget(saved_bidon)
+
+        bidon_hint = QLabel("N.º lote del bidón: 000-0")
+        bidon_hint.setObjectName("savedBidonLotHint")
+        bidon_hint.setStyleSheet("color: #2f80d1; font-weight: 600; padding-left: 4px;")
+        bidon_layout.addWidget(bidon_hint)
+        layout.addRow("N.º bidón de goma bruta:", bidon_container)
+
+        saved_kg = QLabel("-")
+        saved_kg.setObjectName("savedKgRawValue")
+        saved_kg.setWordWrap(True)
+        saved_kg.setStyleSheet(
+            "background: #f8fbff; border: 1px solid #d9e2ec; border-radius: 10px; padding: 8px 10px;"
+        )
+        layout.addRow("KG goma bruta:", saved_kg)
+        return group
 
     def _build_saved_production_group(self) -> QGroupBox:
         group = QGroupBox("PRODUCCION")
@@ -336,19 +373,23 @@ class GomaSecaWidget(QWidget):
         layout.setVerticalSpacing(10)
 
         self._raw_drum_input = QLineEdit()
+        self._raw_drum_input.setObjectName("gomaSecaRawBidonInput")
         self._raw_drum_input.setPlaceholderText("P001")
-        self._raw_drum_input.textEdited.connect(self._on_bidon_text_changed)
+        self._raw_drum_input.textChanged.connect(self._on_bidon_text_changed)
         self._bidon_completer = QCompleter([])
         self._bidon_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._bidon_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self._bidon_completer.activated.connect(self._apply_bidon_completion)
         self._raw_drum_input.setCompleter(self._bidon_completer)
         layout.addRow("N.º bidón de goma bruta:", self._raw_drum_input)
 
         self._raw_kg_input = NoWheelDoubleSpinBox()
+        self._raw_kg_input.setObjectName("gomaSecaRawKgInput")
         self._raw_kg_input.setMaximum(100000)
         self._raw_kg_input.setDecimals(2)
         self._raw_kg_input.setSuffix(" kg")
         self._raw_kg_input.valueChanged.connect(self._validate_form)
+        self._raw_kg_input.valueChanged.connect(self._update_raw_kg_style)
         layout.addRow("KG Goma Bruta:", self._raw_kg_input)
         return group
 
@@ -457,7 +498,25 @@ class GomaSecaWidget(QWidget):
         self._raw_drum_input.setText(self._raw_drum_input.text().strip().upper())
         suggestions = self._production_bidones_suggestions(self._raw_drum_input.text())
         self._bidon_completer.model().setStringList(suggestions)  # type: ignore[union-attr]
+        self._apply_default_kg_for_selected_bidon()
         self._validate_form()
+
+    def _apply_bidon_completion(self, value: str) -> None:
+        self._raw_drum_input.setText(value)
+        self._apply_default_kg_for_selected_bidon()
+        self._validate_form()
+
+    def _apply_default_kg_for_selected_bidon(self) -> None:
+        normalized = self._raw_drum_input.text().strip().upper()
+        if not normalized:
+            return
+        available = self._bidon_service.list_identifications(normalized, status="stock", limit=10)
+        if normalized in available:
+            self._raw_kg_input.setValue(self.DEFAULT_BIDON_KG)
+            return
+        if self._is_editing_existing and self._current_record is not None:
+            if normalized == self._current_record.raw_drum_identification:
+                self._raw_kg_input.setValue(self._current_record.raw_kg_used)
 
     def _production_bidones_suggestions(self, query: str | None = None) -> list[str]:
         suggestions = self._bidon_service.list_identifications(
@@ -518,6 +577,7 @@ class GomaSecaWidget(QWidget):
         self._distillation_input.setValue(0)
         self._observaciones_input.clear()
         self._refresh_lote_suggestion(force=True)
+        self._update_raw_kg_style()
 
     def _populate_form_from_record(self, record: GomaSecaProduction) -> None:
         self._lote_input.setText(record.lot_code)
@@ -534,12 +594,14 @@ class GomaSecaWidget(QWidget):
         self._distillation_input.setValue(record.distillation_minutes)
         self._observaciones_input.setPlainText(record.observations)
         self._refresh_lote_suggestion(force=False)
+        self._update_raw_kg_style()
 
     def _populate_saved_view(self, record: GomaSecaProduction) -> None:
         self.findChild(QLabel, "savedLotValue").setText(record.lot_code)
         self.findChild(QLabel, "savedFinisionValue").setText(str(record.finision_number))
         self.findChild(QLabel, "savedKgProducedValue").setText(f"{record.kg_produced:.2f} kg")
         self.findChild(QLabel, "savedBidonValue").setText(record.raw_drum_identification)
+        self.findChild(QLabel, "savedBidonLotHint").setText("N.º lote del bidón: 000-0")
         self.findChild(QLabel, "savedKgRawValue").setText(f"{record.raw_kg_used:.2f} kg")
         self.findChild(QLabel, "savedFilterCleaningsValue").setText(str(record.filter_cleanings))
         self.findChild(QLabel, "savedHumidityValue").setText(f"{record.humidity_percent:.2f} %")
@@ -663,6 +725,13 @@ class GomaSecaWidget(QWidget):
                 "color: #166534; font-weight: 700; padding: 6px 0;"
             )
         self._validation_label.setVisible(True)
+
+    def _update_raw_kg_style(self, _value: float | None = None) -> None:
+        value = self._raw_kg_input.value()
+        if 0 < value <= 250 and abs(value - self.DEFAULT_BIDON_KG) > 0.001:
+            self._raw_kg_input.setStyleSheet("color: #b42318; border: 1px solid #b42318;")
+            return
+        self._raw_kg_input.setStyleSheet("")
 
     def _is_valid_raw_drum(self, value: str) -> bool:
         normalized = value.strip().upper()

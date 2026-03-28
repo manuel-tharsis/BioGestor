@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QEvent, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox,
@@ -43,10 +43,8 @@ class BidonVisual(QWidget):
     def _build_tooltip(self) -> str:
         if self._bidon.status == "stock":
             return f"{self._bidon.identification} en stock"
-        return (
-            f"{self._bidon.identification} consumido en "
-            f"{(self._bidon.consumed_in or 'proceso no informado').upper()}"
-        )
+        process = (self._bidon.consumed_in or "proceso no informado").upper()
+        return f"{self._bidon.identification} consumido en {process}"
 
     def _fill_color(self) -> QColor:
         if self._bidon.status == "stock":
@@ -66,9 +64,7 @@ class BidonVisual(QWidget):
 
         body_rect = QRectF(28, 32, self.width() - 56, self.height() - 56)
         top_rect = QRectF(body_rect.left() + 10, 16, body_rect.width() - 20, 28)
-        shadow_rect = QRectF(
-            body_rect.left() + 12, body_rect.bottom() - 2, body_rect.width() - 24, 12
-        )
+        shadow_rect = QRectF(body_rect.left() + 12, body_rect.bottom() - 2, body_rect.width() - 24, 12)
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(0, 0, 0, 20))
@@ -96,23 +92,13 @@ class BidonVisual(QWidget):
 
         highlight = QPainterPath()
         highlight.addRoundedRect(
-            QRectF(
-                body_rect.left() + 12,
-                body_rect.top() + 12,
-                26,
-                body_rect.height() - 24,
-            ),
+            QRectF(body_rect.left() + 12, body_rect.top() + 12, 26, body_rect.height() - 24),
             12,
             12,
         )
         painter.fillPath(highlight, QColor(255, 255, 255, 40))
 
-        label_rect = QRectF(
-            body_rect.left() + 18,
-            body_rect.center().y() - 22,
-            body_rect.width() - 36,
-            44,
-        )
+        label_rect = QRectF(body_rect.left() + 18, body_rect.center().y() - 22, body_rect.width() - 36, 44)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(16, 42, 67, 180))
         painter.drawRoundedRect(label_rect, 8, 8)
@@ -123,7 +109,6 @@ class BidonVisual(QWidget):
         painter.setFont(font)
         painter.setPen(QColor("#f8fbff"))
         painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, self._bidon.identification)
-
         painter.end()
         super().paintEvent(event)
 
@@ -136,7 +121,8 @@ class BidonesWidget(QWidget):
         self._goma_seca_service = GomaSecaService(session_factory)
         self._completer = QCompleter([])
         self._all_bidones: list[Bidon] = []
-        self._current_columns = 4
+        self._last_columns = 0
+        self._last_rendered_ids: tuple[str, ...] = ()
         self._build_ui()
         self._refresh_content()
 
@@ -160,7 +146,6 @@ class BidonesWidget(QWidget):
 
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
-
         self._search_input = QLineEdit()
         self._search_input.setObjectName("bidonSearchInput")
         self._search_input.setPlaceholderText("Buscar bidón por identificación")
@@ -176,7 +161,7 @@ class BidonesWidget(QWidget):
         self._color_filter.addItem("Azules: en stock", "stock")
         self._color_filter.addItem("Grises: goma seca F1620", "f1620")
         self._color_filter.addItem("Rojos: F0975", "f0975")
-        self._color_filter.currentIndexChanged.connect(self._refresh_visuals)
+        self._color_filter.currentIndexChanged.connect(lambda: self._refresh_visuals(force=True))
         filters_row.addWidget(self._color_filter)
         header_layout.addLayout(filters_row)
 
@@ -213,7 +198,7 @@ class BidonesWidget(QWidget):
 
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
         if watched is self._scroll.viewport() and event.type() == QEvent.Type.Resize:
-            self._refresh_visuals()
+            self._refresh_visuals(force=False)
         return super().eventFilter(watched, event)
 
     def _apply_completion(self, value: str) -> None:
@@ -222,11 +207,11 @@ class BidonesWidget(QWidget):
     def _on_search_changed(self, _value: str) -> None:
         suggestions = self._service.list_identifications(self._search_input.text(), limit=12)
         self._completer.model().setStringList(suggestions)  # type: ignore[union-attr]
-        self._refresh_visuals()
+        self._refresh_visuals(force=True)
 
     def _refresh_content(self) -> None:
         self._all_bidones = self._service.list_bidones()
-        self._on_search_changed(self._search_input.text())
+        self._refresh_visuals(force=True)
 
     def _filtered_bidones(self) -> list[Bidon]:
         query = self._search_input.text().strip().upper()
@@ -247,37 +232,59 @@ class BidonesWidget(QWidget):
         if exact_matches:
             return exact_matches
 
-        ranked_identifications = self._service.list_identifications(query, limit=100)
-        rank_map = {identification: index for index, identification in enumerate(ranked_identifications)}
+        ranked = self._service.list_identifications(query, limit=100)
+        rank_map = {identification: index for index, identification in enumerate(ranked)}
         return sorted(
             [item for item in items if query in item.identification],
             key=lambda item: rank_map.get(item.identification, 999),
         )
 
-    def _refresh_visuals(self) -> None:
+    def _refresh_visuals(self, *, force: bool) -> None:
         items = self._filtered_bidones()
+        columns = self._calculate_columns()
+        render_ids = tuple(item.identification for item in items)
+
+        if not force and columns == self._last_columns and render_ids == self._last_rendered_ids:
+            self._update_status(items, columns)
+            return
+
+        self._last_columns = columns
+        self._last_rendered_ids = render_ids
+
+        self._visual_container.setUpdatesEnabled(False)
+        try:
+            self._clear_grid()
+            for index, bidon in enumerate(items):
+                row = index // columns
+                column = index % columns
+                visual = BidonVisual(bidon)
+                visual.clicked.connect(lambda item=bidon: self._show_bidon_detail(item))
+                self._visual_grid.addWidget(visual, row, column)
+
+            for column in range(columns):
+                self._visual_grid.setColumnStretch(column, 1)
+            self._visual_grid.setRowStretch((len(items) // max(columns, 1)) + 1, 1)
+        finally:
+            self._visual_container.setUpdatesEnabled(True)
+            self._visual_container.update()
+
+        self._update_status(items, columns)
+
+    def _clear_grid(self) -> None:
         while self._visual_grid.count():
             child = self._visual_grid.takeAt(0)
             widget = child.widget()
             if widget is not None:
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
 
+    def _calculate_columns(self) -> int:
         card_width = 220
-        viewport_width = max(self._scroll.viewport().width() - 32, card_width)
-        columns = max(1, viewport_width // card_width)
-        self._current_columns = columns
+        viewport_width = max(self._scroll.viewport().width() - 24, card_width)
+        return max(1, viewport_width // card_width)
 
-        for index, bidon in enumerate(items):
-            row = index // columns
-            column = index % columns
-            visual = BidonVisual(bidon)
-            visual.clicked.connect(lambda _checked=False, item=bidon: self._show_bidon_detail(item))
-            self._visual_grid.addWidget(visual, row, column)
-
-        for column in range(columns):
-            self._visual_grid.setColumnStretch(column, 1)
-        self._visual_grid.setRowStretch((len(items) // columns) + 1, 1)
-
+    def _update_status(self, items: list[Bidon], columns: int) -> None:
         if not self._all_bidones:
             self._status_label.setText("Todavía no hay bidones guardados.")
         elif not items:

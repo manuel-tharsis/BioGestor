@@ -3,7 +3,7 @@ from datetime import date
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QPushButton, QSpinBox, QDateEdit
+from PySide6.QtWidgets import QApplication, QDateEdit, QDoubleSpinBox, QLabel, QLineEdit, QPushButton, QSpinBox
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -41,7 +41,7 @@ def test_main_window_home_and_navigation_history() -> None:
     window._open_view("producciones")
     section_buttons = window._entries_by_key["producciones"].widget.findChildren(QPushButton, "sectionMenuCard")
     texts = [button.text() for button in section_buttons]
-    assert texts == ["GOMA SECA", "EXTRACCION Y EAL", "DESTILACION"]
+    assert texts == ["GOMA SECA F1620", "EXTRACCION Y EAL", "DESTILACION"]
 
     window._open_view("consultas")
     consultas_buttons = window._entries_by_key["consultas"].widget.findChildren(QPushButton, "sectionMenuCard")
@@ -145,17 +145,20 @@ def test_goma_seca_page_switches_between_entry_and_saved_card() -> None:
     lote_input = goma_page.findChild(QLineEdit, "gomaSecaLoteInput")
     finision_selector = goma_page.findChild(QSpinBox, "gomaSecaFinisionSelector")
     saved_lot = goma_page.findChild(QLabel, "savedLotValue")
+    bidon_lot_hint = goma_page.findChild(QLabel, "savedBidonLotHint")
 
     assert edit_button is not None
     assert save_button is not None
     assert validation_label is not None
     assert lote_input is not None
     assert saved_lot is not None
+    assert bidon_lot_hint is not None
     assert not edit_button.isHidden()
     assert save_button.isHidden()
     assert "Confirma tu contraseña" in validation_label.text()
     assert lote_input.isReadOnly()
     assert saved_lot.text() == "EG26-088-1"
+    assert bidon_lot_hint.text() == "N.º lote del bidón: 000-0"
 
     # Move to an empty slot and verify the form becomes editable again.
     assert finision_selector is not None
@@ -164,6 +167,33 @@ def test_goma_seca_page_switches_between_entry_and_saved_card() -> None:
     assert edit_button.isHidden()
     assert not save_button.isHidden()
     assert not lote_input.isReadOnly()
+
+
+def test_goma_seca_bidon_sets_default_kg_and_marks_non_standard_value() -> None:
+    app = _app()
+    session_factory = _session_factory()
+    bidon_service = BidonService(session_factory)
+    bidon_service.save_bidon(
+        payload=BidonPayload("P001", "stock", None, ""),
+        username="juana",
+    )
+
+    window = MainWindow("juana", "admin", session_factory)
+    window._open_view("producciones.goma_seca")
+    goma_page = window._entries_by_key["producciones.goma_seca"].widget
+    raw_bidon_input = goma_page.findChild(QLineEdit, "gomaSecaRawBidonInput")
+    raw_kg_input = goma_page.findChild(QDoubleSpinBox, "gomaSecaRawKgInput")
+
+    assert raw_bidon_input is not None
+    assert raw_kg_input is not None
+
+    raw_bidon_input.setText("P001")
+    app.processEvents()
+    assert raw_kg_input.value() == 200.0
+
+    raw_kg_input.setValue(150.0)
+    app.processEvents()
+    assert "#b42318" in raw_kg_input.styleSheet()
 
 
 def test_consultas_has_lot_selector_button() -> None:

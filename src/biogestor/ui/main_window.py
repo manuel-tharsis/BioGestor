@@ -129,10 +129,10 @@ class MainWindow(QMainWindow):
         goma.production_saved.connect(self.statusBar().showMessage)
         self._register_entry(
             "producciones.goma_seca",
-            "Goma seca",
+            "Goma seca F1620",
             self._wrap_content_page(
-                "Goma seca",
-                "Registro diario por finisión y resumen semanal de goma seca.",
+                "Goma seca F1620",
+                "Registro diario por finisión y resumen semanal de goma seca F1620.",
                 goma,
             ),
         )
